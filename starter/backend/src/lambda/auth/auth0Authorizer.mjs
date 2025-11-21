@@ -4,6 +4,9 @@ import { createLogger } from '../../utils/logger.mjs'
 
 const logger = createLogger('auth')
 
+// TODO: Provide a URL that can be used to download a certificate that can be used
+// to verify JWT token signature.
+// To get this URL you need to go to an Auth0 page -> Show Advanced Settings -> Endpoints -> JSON Web Key Set
 const jwksUrl = 'https://test-endpoint.auth0.com/.well-known/jwks.json'
 
 export async function handler(event) {
@@ -46,8 +49,30 @@ async function verifyToken(authHeader) {
   const token = getToken(authHeader)
   const jwt = jsonwebtoken.decode(token, { complete: true })
 
-  // TODO: Implement token verification
-  return undefined;
+  if (!jwt) {
+    throw new Error('invalid token')
+  }
+
+  try {
+    const response = await Axios.get(jwksUrl);
+    const keys = response.data.keys;
+    const signingKey = keys.find(key => key.kid === jwt.header.kid);
+
+    if (!signingKey) {
+      throw new Error('No signing key found');
+    }
+
+    // Construct PEM
+    let cert = signingKey.x5c[0];
+    cert = cert.match(/.{1,64}/g).join('\n');
+    const pem = `-----BEGIN CERTIFICATE-----\n${cert}\n-----END CERTIFICATE-----\n`;
+
+    return jsonwebtoken.verify(token, pem, { algorithms: ['RS256'] });
+
+  } catch (error) {
+    logger.error('Error verifying token', { error: error.message })
+    throw error
+  }
 }
 
 function getToken(authHeader) {

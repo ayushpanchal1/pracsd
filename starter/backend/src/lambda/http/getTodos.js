@@ -1,4 +1,31 @@
-export function handler(event) {
-  // TODO: Get all TODO items for a current user
-  return undefined
-}
+import { DynamoDB } from '@aws-sdk/client-dynamodb'
+import { DynamoDBDocument } from '@aws-sdk/lib-dynamodb'
+import middy from '@middy/core'
+import cors from '@middy/http-cors'
+import { getUserId } from '../utils.mjs'
+
+const dynamoDb = DynamoDBDocument.from(new DynamoDB())
+const todosTable = process.env.TODOS_TABLE
+
+const handler = middy(async (event) => {
+  const userId = getUserId(event)
+
+  const result = await dynamoDb.query({
+    TableName: todosTable,
+    KeyConditionExpression: 'userId = :userId',
+    ExpressionAttributeValues: {
+      ':userId': userId
+    }
+  })
+
+  return {
+    statusCode: 200,
+    body: JSON.stringify({
+      items: result.Items
+    })
+  }
+})
+
+handler.use(cors({ credentials: true }))
+
+export { handler }
